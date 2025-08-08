@@ -1,0 +1,14 @@
+{
+  "start_url": "https://www.wyseguys.com/",
+  "output_dir": "output",
+  "db_path": "boem.db",
+  "log_path": "boem.log",
+  "concurrency": 6,
+  "max_depth": 3,
+  "respect_robots": true,
+  "user_agent": "boem-web-thing/1.0 (christopher.zwemke@boem.gov)",
+  "allowed_hosts": [],
+  "verbose": true,
+  "rate_ms": 1000,
+  "http_timeout_seconds": 30
+}
