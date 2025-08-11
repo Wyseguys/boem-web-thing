@@ -1,8 +1,12 @@
 package crawler
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +14,9 @@ import (
 	"boem-web-thing/config"
 	"boem-web-thing/logger"
 	"boem-web-thing/storage"
+
+	"github.com/wyseguys/boem-web-thing/util"
+	"golang.org/x/net/html"
 )
 
 type Crawler struct {
@@ -129,4 +136,92 @@ func (c *Crawler) shouldVisit(raw string) bool {
 		}
 	}
 	return true
+}
+
+func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType, filePath string, links []string, err error) {
+	c.log.Debug("Fetching", rawURL)
+
+	resp, err := c.client.Get(rawURL)
+	if err != nil {
+		return 0, "", "", nil, err
+	}
+	defer resp.Body.Close()
+
+	status = resp.StatusCode
+	contentType = resp.Header.Get("Content-Type")
+
+	// Save only HTML and similar; still store others but don't parse links
+	filePath = util.URLToFilePath(c.cfg.OutputDir, rawURL)
+	if err := util.EnsureDir(filepath.Dir(filePath)); err != nil {
+		return status, contentType, "", nil, fmt.Errorf("failed to create dir: %w", err)
+	}
+
+	// Write response to disk
+	out, err := os.Create(filePath)
+	if err != nil {
+		return status, contentType, "", nil, err
+	}
+	_, err = io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
+		return status, contentType, "", nil, err
+	}
+
+	// Re-fetch content for parsing (only if HTML)
+	if strings.Contains(contentType, "text/html") && status == http.StatusOK {
+		// We re-read from file to avoid touching the live network twice
+		f, err := os.Open(filePath)
+		if err != nil {
+			return status, contentType, filePath, nil, err
+		}
+		defer f.Close()
+
+		pageLinks, err := extractLinks(rawURL, f)
+		if err != nil {
+			c.log.Error("Link parse error for", rawURL, ":", err)
+		} else {
+			links = pageLinks
+		}
+	}
+
+	return status, contentType, filePath, links, nil
+}
+
+// extractLinks parses HTML and returns all href values found on <a> tags.
+func extractLinks(baseURL string, r io.Reader) ([]string, error) {
+	var links []string
+	tokenizer := html.NewTokenizer(r)
+
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		tt := tokenizer.Next()
+		switch tt {
+		case html.ErrorToken:
+			if tokenizer.Err() == io.EOF {
+				return links, nil
+			}
+			return links, tokenizer.Err()
+
+		case html.StartTagToken, html.SelfClosingTagToken:
+			t := tokenizer.Token()
+			if t.DataAtom.String() == "a" {
+				for _, attr := range t.Attr {
+					if attr.Key == "href" {
+						href := strings.TrimSpace(attr.Val)
+						if href == "" {
+							continue
+						}
+						parsed, err := base.Parse(href)
+						if err == nil {
+							links = append(links, parsed.String())
+						}
+					}
+				}
+			}
+		}
+	}
 }
