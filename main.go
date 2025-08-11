@@ -4,23 +4,23 @@ import (
 	"log"
 	"os"
 
-	"boem-web-thing/config"
-	"boem-web-thing/crawler"
-	"boem-web-thing/logger"
-	"boem-web-thing/storage"
+	"github.com/wyseguys/boem-web-thing/config"
+	"github.com/wyseguys/boem-web-thing/crawler"
+	"github.com/wyseguys/boem-web-thing/logger"
+	"github.com/wyseguys/boem-web-thing/storage"
 )
 
 func main() {
 	// 1. Load config
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.LoadConfig("config.json")
 	if err != nil {
 		log.Fatal("Error loading config:", err)
 	}
 
 	// 2. Init logger
-	logDir := cfg.LogDir
+	logDir := cfg.LogPath
 	if logDir == "" {
-		logDir = "./logs"
+		log.Fatal("Error with logging configuration:", err)
 	}
 	appLogger, err := logger.New(logDir, cfg.LogLevel)
 	if err != nil {
@@ -29,10 +29,11 @@ func main() {
 	defer appLogger.Close()
 
 	// 3. Open SQLite storage
-	dbPath := cfg.DBPath
+	dbPath := cfg.DBFilePath
 	if dbPath == "" {
-		dbPath = "./crawl.db"
+		log.Fatal("Error with database configuration:", err)
 	}
+
 	store, err := storage.New(dbPath)
 	if err != nil {
 		appLogger.Error("Error opening database:", err)

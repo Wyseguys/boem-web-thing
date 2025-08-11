@@ -1,52 +1,68 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
-// Logger wraps standard log.Logger for info, error, and debug output.
+// Logger wraps standard loggers with different levels
 type Logger struct {
-	info    *log.Logger
-	err     *log.Logger
-	debug   *log.Logger
-	verbose bool
+	DebugLog *log.Logger
+	InfoLog  *log.Logger
+	ErrorLog *log.Logger
+	file     *os.File
 }
 
-// New creates a new Logger instance that writes to both a file and stdout.
-func New(logPath string, verbose bool) (*Logger, error) {
-	// Open or create the log file
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+// New creates a new Logger writing to a file and stdout
+func New(logDir, level string) (*Logger, error) {
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create log dir: %w", err)
+	}
+
+	logPath := filepath.Join(logDir, "crawler.log")
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
-	// MultiWriter to write to both stdout and file
-	multiInfo := io.MultiWriter(os.Stdout, f)
-	multiErr := io.MultiWriter(os.Stderr, f)
+	multiOut := io.MultiWriter(os.Stdout, file)
 
-	return &Logger{
-		info:    log.New(multiInfo, "[INFO] ", log.Ldate|log.Ltime),
-		err:     log.New(multiErr, "[ERROR] ", log.Ldate|log.Ltime|log.Lshortfile),
-		debug:   log.New(multiInfo, "[DEBUG] ", log.Ldate|log.Ltime|log.Lshortfile),
-		verbose: verbose,
-	}, nil
+	l := &Logger{
+		DebugLog: log.New(multiOut, "[DEBUG] ", log.Ldate|log.Ltime|log.Lshortfile),
+		InfoLog:  log.New(multiOut, "[INFO] ", log.Ldate|log.Ltime),
+		ErrorLog: log.New(multiOut, "[ERROR] ", log.Ldate|log.Ltime|log.Lshortfile),
+		file:     file,
+	}
+
+	// Set log level (naive filtering for now)
+	level = strings.ToLower(level)
+	if level != "debug" {
+		// If not debug, make DebugLog a no-op
+		l.DebugLog.SetOutput(io.Discard)
+	}
+
+	return l, nil
 }
 
-// Info logs informational messages to both console and file.
-func (l *Logger) Info(v ...interface{}) {
-	l.info.Println(v...)
+// Close closes the log file
+func (l *Logger) Close() {
+	if l.file != nil {
+		_ = l.file.Close()
+	}
 }
 
-// Error logs error messages to both console and file.
-func (l *Logger) Error(v ...interface{}) {
-	l.err.Println(v...)
-}
-
-// Debug logs debug messages only if verbose is enabled.
 func (l *Logger) Debug(v ...interface{}) {
-	if l.verbose {
-		l.debug.Println(v...)
-	}
+	l.DebugLog.Println(v...)
+}
+
+func (l *Logger) Info(v ...interface{}) {
+	l.InfoLog.Println(v...)
+}
+
+func (l *Logger) Error(v ...interface{}) {
+	l.ErrorLog.Println(v...)
 }

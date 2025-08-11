@@ -11,10 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"boem-web-thing/config"
-	"boem-web-thing/logger"
-	"boem-web-thing/storage"
-
+	"github.com/wyseguys/boem-web-thing/config"
+	"github.com/wyseguys/boem-web-thing/logger"
+	"github.com/wyseguys/boem-web-thing/storage"
 	"github.com/wyseguys/boem-web-thing/util"
 	"golang.org/x/net/html"
 )
@@ -64,7 +63,7 @@ func (c *Crawler) Crawl() {
 	close(urlCh)
 }
 
-func (c *Crawler) worker(urlCh <-chan string, doneCh <-chan struct{}) {
+func (c *Crawler) worker(urlCh chan string, doneCh <-chan struct{}) {
 	defer c.wg.Done()
 
 	for {
@@ -75,12 +74,12 @@ func (c *Crawler) worker(urlCh <-chan string, doneCh <-chan struct{}) {
 			if !ok {
 				return
 			}
-			c.processURL(u, urlCh)
+			go c.processURL(u, urlCh)
 		}
 	}
 }
 
-func (c *Crawler) processURL(u string, urlCh chan<- string) {
+func (c *Crawler) processURL(u string, urlCh chan string) {
 	// Check if visited already
 	c.mu.Lock()
 	if c.visited[u] {
@@ -91,7 +90,7 @@ func (c *Crawler) processURL(u string, urlCh chan<- string) {
 	c.mu.Unlock()
 
 	// Fetch
-	status, contentType, links, filePath, err := c.fetchAndSave(u)
+	status, contentType, filePath, links, err := c.fetchAndSave(u)
 	if err != nil {
 		c.log.Error("Error fetching", u, ":", err)
 		return
@@ -138,7 +137,7 @@ func (c *Crawler) shouldVisit(raw string) bool {
 	return true
 }
 
-func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType, filePath string, links []string, err error) {
+func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType string, filePath string, links []string, err error) {
 	c.log.Debug("Fetching", rawURL)
 
 	resp, err := c.client.Get(rawURL)

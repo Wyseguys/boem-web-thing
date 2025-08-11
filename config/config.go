@@ -10,8 +10,9 @@ import (
 type Config struct {
 	StartURL      string   `json:"start_url"`
 	OutputDir     string   `json:"output_dir"`
-	DBPath        string   `json:"db_path"`
+	DBFilePath    string   `json:"db_file_path"`
 	LogPath       string   `json:"log_path"`
+	LogLevel      string   `json:"log_level"`
 	Concurrency   int      `json:"concurrency"`
 	MaxDepth      int      `json:"max_depth"`
 	RespectRobots bool     `json:"respect_robots"`
@@ -37,13 +38,13 @@ func LoadConfig(path string) (*Config, error) {
 
 	// Apply defaults if missing
 	if cfg.OutputDir == "" {
-		cfg.OutputDir = "output"
+		cfg.OutputDir = "./_output"
 	}
-	if cfg.DBPath == "" {
-		cfg.DBPath = "boem.db"
+	if cfg.DBFilePath == "" {
+		cfg.DBFilePath = "./_db/webthing.db"
 	}
 	if cfg.LogPath == "" {
-		cfg.LogPath = "boem.log"
+		cfg.LogPath = "./_logs"
 	}
 	if cfg.Concurrency <= 0 {
 		cfg.Concurrency = 5

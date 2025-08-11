@@ -15,6 +15,28 @@ func EnsureDir(dir string) error {
 	return os.MkdirAll(dir, os.ModePerm)
 }
 
+func EnsureFile(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		// file already exists
+		return nil
+	} else if !os.IsNotExist(err) {
+		// some other error accessing file
+		return err
+	}
+
+	// create parent dir
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	// create empty file
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
 // SanitizeFilename takes a string and makes it safe for filesystem usage.
 func SanitizeFilename(name string) string {
 	// Replace invalid characters with underscores
