@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+
 	// 1. Load config
 	cfg, err := config.LoadConfig("config.json")
 	if err != nil {
@@ -28,6 +29,11 @@ func main() {
 	}
 	defer appLogger.Close()
 
+	if cfg.Verbose {
+		appLogger.Info("Configuration initialized")
+		appLogger.Info("Logger initialized")
+	}
+
 	// 3. Open SQLite storage
 	dbPath := cfg.DBFilePath
 	if dbPath == "" {
@@ -40,12 +46,20 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+	if cfg.Verbose {
+		appLogger.Info("Database opened")
+	}
 
 	// 4. Create crawler
 	c := crawler.New(cfg, appLogger, store)
+	if cfg.Verbose {
+		appLogger.Info("Crawler initialized")
+	}
 
 	// 5. Start crawling
+	appLogger.Info("Beginning crawl")
 	c.Crawl()
 
-	appLogger.Info("Crawl finished")
+	// 6. Tell me the crawl is done
+	appLogger.Info("Finished crawl")
 }

@@ -3,6 +3,7 @@ module github.com/wyseguys/boem-web-thing
 go 1.24.6
 
 require (
+	github.com/temoto/robotstxt v1.1.2
 	go.etcd.io/bbolt v1.3.10
 	golang.org/x/net v0.0.0-20210916014120-12bc252f5db8
 	modernc.org/sqlite v1.38.2

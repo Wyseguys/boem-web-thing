@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/temoto/robotstxt"
 	"github.com/wyseguys/boem-web-thing/config"
 	"github.com/wyseguys/boem-web-thing/logger"
 	"github.com/wyseguys/boem-web-thing/storage"
@@ -26,6 +27,7 @@ type Crawler struct {
 	visited map[string]bool
 	mu      sync.Mutex
 	wg      sync.WaitGroup
+	ticker  *time.Ticker // NEW
 }
 
 func New(cfg *config.Config, log *logger.Logger, store *storage.Storage) *Crawler {
@@ -37,83 +39,167 @@ func New(cfg *config.Config, log *logger.Logger, store *storage.Storage) *Crawle
 			Timeout: time.Duration(cfg.HTTPTimeout) * time.Second,
 		},
 		visited: make(map[string]bool),
+		ticker:  time.NewTicker(time.Duration(cfg.RateMs) * time.Millisecond),
 	}
 }
 
 // Crawl starts crawling from the StartURL
 func (c *Crawler) Crawl() {
 	startURL := c.cfg.StartURL
-	c.log.Info("Starting crawl at", startURL)
+	c.log.Debug("Starting site crawl at", startURL)
 
 	urlCh := make(chan string, c.cfg.Concurrency*2)
-	doneCh := make(chan struct{})
 
-	// Start worker goroutines
-	for i := 0; i < c.cfg.Concurrency; i++ {
-		c.wg.Add(1)
-		go c.worker(urlCh, doneCh)
+	// Download a copy of the robots.txt to refer to
+	// Always download a new copy at the start of a job
+	robots_url := startURL + "robots.txt"
+	_, _, _, _, robots_err := c.fetchAndSave(robots_url)
+	if robots_err != nil {
+		c.log.Debug("Error Downloading Robots.txt", robots_url, robots_err)
 	}
 
+	c.wg.Add(1) // adding a wait here to track the first URL and wait until all the subsequent processes happen
 	// Seed the queue
 	urlCh <- startURL
 
-	// Wait for all workers to finish
-	c.wg.Wait()
-	close(doneCh)
-	close(urlCh)
+	// Start worker goroutines
+	// for i := 0; i < c.cfg.Concurrency; i++ {
+	//wg.Add(1)
+	go c.worker(urlCh) // start a single worker for now
+	// }
+
+	c.log.Debug("Waiting to finish crawl of", startURL)
+	c.wg.Wait() // Wait for all workers to finish processing
+	c.log.Debug("Finished crawl of site", startURL)
 }
 
-func (c *Crawler) worker(urlCh chan string, doneCh <-chan struct{}) {
-	defer c.wg.Done()
+// This worker is constantly looping and reading the urlCh channel
+// once the channel is empty, then the worker loop should exit
+// returning from this worker() to the Crawl() that called
+// it and Crawl can stop waiting.
+func (c *Crawler) worker(urlCh chan string) {
+	c.log.Debug("Starting Worker")
+	for urlToCheck := range urlCh {
 
-	for {
-		select {
-		case <-doneCh:
-			return
-		case u, ok := <-urlCh:
-			if !ok {
-				return
-			}
-			go c.processURL(u, urlCh)
+		if c.cfg.Verbose {
+			c.log.Debug("Starting to process a URL", urlToCheck)
 		}
+
+		go func(url string) {
+			defer c.wg.Done()
+			c.processURL(url, urlCh)
+		}(urlToCheck)
 	}
+	c.log.Debug("Ending Worker")
 }
 
-func (c *Crawler) processURL(u string, urlCh chan string) {
-	// Check if visited already
-	c.mu.Lock()
-	if c.visited[u] {
-		c.mu.Unlock()
+// processURL fetches the URL, saves the content, extracts links from the file on disk and enqueues new URLs
+func (c *Crawler) processURL(u string, urlCh chan<- string) {
+
+	c.log.Debug("Start of processURL...", u)
+
+	if c.isAlreadyVisited(u) {
+		c.log.Debug("Already visited", u)
 		return
 	}
-	c.visited[u] = true
-	c.mu.Unlock()
 
-	// Fetch
+	// 1. Fetch
+	if c.cfg.Verbose {
+		c.log.Info("Sending to fetch and save", u)
+	}
+	// 1.1 Rate limiting
+	time.Sleep(time.Duration(c.cfg.RateMs) * time.Millisecond)
+	// 1.2 Gather the info from the URL
 	status, contentType, filePath, links, err := c.fetchAndSave(u)
 	if err != nil {
 		c.log.Error("Error fetching", u, ":", err)
 		return
 	}
 
-	// Save page record
+	// 2. Save page record
+	if c.cfg.Verbose {
+		c.log.Info("Saving the fetched URL")
+	}
 	if err := c.store.SavePage(u, status, contentType, filePath); err != nil {
 		c.log.Error("DB save error for", u, ":", err)
 	}
+	if c.cfg.Verbose {
+		c.log.Info("Processing for links")
+	}
 
-	// Save links and enqueue new ones
+	// 3. Add this URL to the list so I don't check it again
+	c.mu.Lock()
+	c.visited[u] = true
+	c.mu.Unlock()
+	if c.cfg.Verbose {
+		c.log.Debug("Add Url to Visited List", u)
+	}
+
+	// 4. Save links and enqueue new ones
 	for _, link := range links {
 		c.store.SaveLink(u, link)
-
 		if c.shouldVisit(link) {
+			c.wg.Add(1) //add to the waitgroup to make sure this URL gets waited for to finish all the processing
 			urlCh <- link
 		}
 	}
 
-	// Rate limiting
-	time.Sleep(time.Duration(c.cfg.RateMs) * time.Millisecond)
+	c.log.Debug("End of processURL...")
 }
 
+// retrieve the contents from the URL, if it is HTML then save a file, save it to the database
+func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType string, filePath string, links []string, err error) {
+	c.log.Debug("Start of fetchAndSave", rawURL)
+	// Make a HEAD request to check the content type
+	resp, err := c.client.Head(rawURL)
+	if err != nil {
+		return 0, "", "", nil, err
+	}
+	defer resp.Body.Close()
+	status = resp.StatusCode
+	contentType = resp.Header.Get("Content-Type")
+	// Make a GET request since the content is HTML
+	resp, err = c.client.Get(rawURL)
+	if err != nil {
+		return 0, "", "", nil, err
+	}
+	defer resp.Body.Close()
+	// Save only HTML and similar; still store others but don't parse links
+	filePath = util.URLToFilePath(c.cfg.OutputDir, rawURL)
+	if err := util.EnsureDir(filepath.Dir(filePath)); err != nil {
+		return status, contentType, "", nil, fmt.Errorf("failed to create dir: %w", err)
+	}
+	// Write response to disk
+	out, err := os.Create(filePath)
+	if err != nil {
+		return status, contentType, "", nil, err
+	}
+	_, err = io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
+		return status, contentType, "", nil, err
+	}
+	// Re-fetch content for parsing (only if HTML)
+	if strings.Contains(contentType, "text/html") && status == http.StatusOK {
+		// We re-read from file to avoid touching the live network twice
+		f, err := os.Open(filePath)
+		if err != nil {
+			return status, contentType, filePath, nil, err
+		}
+		defer f.Close()
+		pageLinks, err := extractLinks(rawURL, f)
+		if err != nil {
+			c.log.Error("Link parse error for", rawURL, ":", err)
+		} else {
+			links = pageLinks
+		}
+	}
+	c.log.Debug("End of fetchAndSave", rawURL)
+	return status, contentType, filePath, links, nil
+}
+
+// Validate the string as a possible URL, see if it is safe, in scope
+// and formatted as a URL correctly.
 func (c *Crawler) shouldVisit(raw string) bool {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -134,68 +220,45 @@ func (c *Crawler) shouldVisit(raw string) bool {
 			return false
 		}
 	}
+	if !c.isRobotsTxtAllowed(parsed.Path) {
+		return false
+	}
+
+	if c.isAlreadyVisited(parsed.String()) {
+		return false
+	}
+
 	return true
 }
 
-func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType string, filePath string, links []string, err error) {
-	c.log.Debug("Fetching", rawURL)
-
-	resp, err := c.client.Get(rawURL)
-	if err != nil {
-		return 0, "", "", nil, err
+// look in the slice of visited URLs to see if we can already visited
+// the one in question. This can save us a trip for pulling a web page
+// and processing related links on ones we do pull.
+func (c *Crawler) isAlreadyVisited(u string) bool {
+	// Check if visited already
+	if c.cfg.Verbose {
+		c.log.Debug("Start isAlreadyVisited")
 	}
-	defer resp.Body.Close()
-
-	status = resp.StatusCode
-	contentType = resp.Header.Get("Content-Type")
-
-	// Save only HTML and similar; still store others but don't parse links
-	filePath = util.URLToFilePath(c.cfg.OutputDir, rawURL)
-	if err := util.EnsureDir(filepath.Dir(filePath)); err != nil {
-		return status, contentType, "", nil, fmt.Errorf("failed to create dir: %w", err)
-	}
-
-	// Write response to disk
-	out, err := os.Create(filePath)
-	if err != nil {
-		return status, contentType, "", nil, err
-	}
-	_, err = io.Copy(out, resp.Body)
-	out.Close()
-	if err != nil {
-		return status, contentType, "", nil, err
-	}
-
-	// Re-fetch content for parsing (only if HTML)
-	if strings.Contains(contentType, "text/html") && status == http.StatusOK {
-		// We re-read from file to avoid touching the live network twice
-		f, err := os.Open(filePath)
-		if err != nil {
-			return status, contentType, filePath, nil, err
+	c.mu.Lock()
+	if c.visited[u] {
+		c.mu.Unlock()
+		if c.cfg.Verbose {
+			c.log.Info("Yup, already visited this URL.", u)
 		}
-		defer f.Close()
-
-		pageLinks, err := extractLinks(rawURL, f)
-		if err != nil {
-			c.log.Error("Link parse error for", rawURL, ":", err)
-		} else {
-			links = pageLinks
-		}
+		return true
 	}
-
-	return status, contentType, filePath, links, nil
+	c.mu.Unlock()
+	return false
 }
 
 // extractLinks parses HTML and returns all href values found on <a> tags.
 func extractLinks(baseURL string, r io.Reader) ([]string, error) {
 	var links []string
 	tokenizer := html.NewTokenizer(r)
-
 	base, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, err
 	}
-
 	for {
 		tt := tokenizer.Next()
 		switch tt {
@@ -204,7 +267,6 @@ func extractLinks(baseURL string, r io.Reader) ([]string, error) {
 				return links, nil
 			}
 			return links, tokenizer.Err()
-
 		case html.StartTagToken, html.SelfClosingTagToken:
 			t := tokenizer.Token()
 			if t.DataAtom.String() == "a" {
@@ -223,4 +285,35 @@ func extractLinks(baseURL string, r io.Reader) ([]string, error) {
 			}
 		}
 	}
+}
+
+// Download a copy of the
+func readRobotsTxt(full_robots_url string) (*robotstxt.RobotsData, error) {
+	resp, err := http.Get(full_robots_url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	robots, err := robotstxt.FromResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return robots, nil
+}
+
+// Validate that the crawler is allowed to access the content as specified by the
+// copy of the robots.txt that was downloaded at the beginning of the session
+func (c *Crawler) isRobotsTxtAllowed(path string) bool {
+	userAgent := c.cfg.UserAgent
+	robotsFilePath := util.URLToFilePath(c.cfg.OutputDir, "robots.txt")
+	robots, err := readRobotsTxt(robotsFilePath)
+	if err != nil {
+		c.log.Error("Error reading robots.txt:", err)
+		return true // If we can't read it, assume allowed
+	}
+
+	group := robots.FindGroup(userAgent)
+	return group.Test(path)
 }

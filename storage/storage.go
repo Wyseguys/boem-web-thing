@@ -26,6 +26,7 @@ func New(dbPath string) (*Storage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	db.SetMaxOpenConns(1) // SQLite is single-threaded, so we limit to 1 connection
 
 	// Create tables if they don't exist
 	schema := `
@@ -52,6 +53,7 @@ func New(dbPath string) (*Storage, error) {
 
 // SavePage inserts or updates a page record.
 func (s *Storage) SavePage(url string, status int, contentType string, filePath string) error {
+
 	_, err := s.db.Exec(`
 	INSERT INTO pages (url, status_code, content_type, file_path, fetched_at)
 	VALUES (?, ?, ?, ?, ?)
@@ -63,6 +65,7 @@ func (s *Storage) SavePage(url string, status int, contentType string, filePath 
 	`,
 		url, status, contentType, filePath, time.Now(),
 	)
+
 	return err
 }
 

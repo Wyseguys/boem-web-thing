@@ -1,15 +1,15 @@
 {
-  "start_url": "https://www.wyseguys.com/",
+  "start_url": "https://doiboem.lndo.site/crawltest/",
   "output_dir": "./_output",
   "db_file_path": "./_db/webthing.db",
   "log_path": "./_logs",
   "log_level": "debug",
-  "concurrency": 1,
+  "concurrency": 50,
   "max_depth": 10,
   "respect_robots": true,
   "user_agent": "boem-web-thing/1.0 (christopher.zwemke@boem.gov)",
-  "allowed_hosts": ["www.wyseguys.com"],
+  "allowed_hosts": ["doiboem.lndo.site"],
   "verbose": true,
-  "rate_ms": 3000,
+  "rate_ms": 200,
   "http_timeout_seconds": 30
 }
