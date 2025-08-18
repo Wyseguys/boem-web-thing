@@ -1,4 +1,4 @@
-module github.com/wyseguys/boem-web-thing
+module boem-web-thing
 
 go 1.24.6
 

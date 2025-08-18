@@ -4,10 +4,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/wyseguys/boem-web-thing/config"
-	"github.com/wyseguys/boem-web-thing/crawler"
-	"github.com/wyseguys/boem-web-thing/logger"
-	"github.com/wyseguys/boem-web-thing/storage"
+	"boem-web-thing/config"
+	"boem-web-thing/crawler"
+	"boem-web-thing/logger"
+	"boem-web-thing/storage"
 )
 
 func main() {

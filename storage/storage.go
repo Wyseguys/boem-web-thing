@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/wyseguys/boem-web-thing/util"
+	"boem-web-thing/util"
 
 	_ "modernc.org/sqlite"
 )

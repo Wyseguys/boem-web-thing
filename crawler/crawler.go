@@ -11,11 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"boem-web-thing/config"
+	"boem-web-thing/logger"
+	"boem-web-thing/storage"
+	"boem-web-thing/util"
+
 	"github.com/temoto/robotstxt"
-	"github.com/wyseguys/boem-web-thing/config"
-	"github.com/wyseguys/boem-web-thing/logger"
-	"github.com/wyseguys/boem-web-thing/storage"
-	"github.com/wyseguys/boem-web-thing/util"
 	"golang.org/x/net/html"
 )
 
