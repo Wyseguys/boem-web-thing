@@ -112,15 +112,13 @@ func (c *Crawler) processURL(u string, urlCh chan<- string) {
 
 	// 2. Save page record
 	c.log.Debug("Saving the fetched URL")
+	c.log.Info("Saving", u)
 	if err := c.store.SavePage(u, status, contentType, filePath); err != nil {
 		c.log.Error("DB save error for", u, ":", err)
 	}
 
 	// 3. Add this URL to the list so I don't check it again
-	c.log.Debug("Add Url to Visited List", u)
-	c.mu.Lock()
-	c.visited[u] = true
-	c.mu.Unlock()
+	c.addToVisited(u)
 
 	c.log.Debug("Extracting links from the fetched page")
 	// 4. Save links and enqueue new ones
@@ -133,6 +131,15 @@ func (c *Crawler) processURL(u string, urlCh chan<- string) {
 	}
 
 	c.log.Debug("End of processURL...")
+}
+
+// Keep track of which URLs have been visited so we don't try to access them
+// more than necessary
+func (c *Crawler) addToVisited(u string) {
+	c.log.Debug("Add Url to Visited List", u)
+	c.mu.Lock()
+	c.visited[u] = true
+	c.mu.Unlock()
 }
 
 // retrieve the contents from the URL, if it is HTML then save a file, save it to the database
@@ -153,7 +160,7 @@ func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType string, f
 	}
 	defer resp.Body.Close()
 	// Save only HTML and similar; still store others but don't parse links
-	filePath = util.URLToFilePath(c.cfg.OutputDir, rawURL)
+	filePath, err = util.URLToFilePath(c.cfg.OutputDir, rawURL)
 	if err := util.EnsureDir(filepath.Dir(filePath)); err != nil {
 		return status, contentType, "", nil, fmt.Errorf("failed to create dir: %w", err)
 	}
@@ -209,12 +216,14 @@ func (c *Crawler) shouldVisit(raw string) bool {
 			return false
 		}
 	}
-	if !c.isRobotsTxtAllowed(parsed.Path) {
-		c.log.Debug("robots.txt blocks link path", parsed.Path)
+
+	if c.isAlreadyVisited(parsed.String()) {
 		return false
 	}
 
-	if c.isAlreadyVisited(parsed.String()) {
+	if !c.isRobotsTxtAllowed(parsed.Path) {
+		c.log.Info("robots.txt blocks link path", parsed.Path)
+		c.addToVisited(raw)
 		return false
 	}
 	return true
@@ -293,7 +302,14 @@ func readRobotsTxt(full_robots_path string) (*robotstxt.RobotsData, error) {
 func (c *Crawler) isRobotsTxtAllowed(path string) bool {
 	c.log.Debug("Starting isRobotsTxtAllowed")
 	userAgent := c.cfg.UserAgent
-	robotsFilePath := util.URLToFilePath(c.cfg.OutputDir, c.cfg.StartURL+"/robots.txt")
+
+	//if the start url ends in /
+	assumedRobotsLocation := util.StripHTMLFile(c.cfg.StartURL) + "robots.txt"
+	robotsFilePath, err := util.URLToFilePath(c.cfg.OutputDir, assumedRobotsLocation)
+	if err != nil {
+		c.log.Error("Unable to find robots.txt:", err)
+		return true // If we can't read it, assume allowed
+	}
 	robots, err := readRobotsTxt(robotsFilePath)
 	if err != nil {
 		c.log.Error("Error reading robots.txt:", err)

@@ -3,8 +3,10 @@ package util
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -51,14 +53,51 @@ func SanitizeFilename(name string) string {
 	return safe
 }
 
+// SanitizePathSegment makes a single path segment safe for filesystem usage.
+func SanitizePathSegment(segment string) string {
+	invalidChars := regexp.MustCompile(`[<>:"/\\|?*]+`)
+	safe := invalidChars.ReplaceAllString(segment, "_")
+	safe = strings.TrimSpace(safe)
+	if safe == "" {
+		safe = "_"
+	}
+	return safe
+}
+
+// SanitizeFullPath sanitizes a full path by cleaning each segment individually.
+func SanitizeFullPath(path string) string {
+
+	if strings.HasPrefix(path, "/") || path == "" {
+		path = path[1:]
+	}
+
+	segments := strings.Split(path, "/")
+	for i, segment := range segments {
+		segments[i] = SanitizePathSegment(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+func SafeJoin(baseDir, hostPath, unsafePath string) (string, error) {
+	safePath := SanitizeFullPath(unsafePath)
+	fullPath := filepath.Join(baseDir, hostPath, safePath)
+	cleanPath := filepath.Clean(fullPath)
+
+	// Ensure the final path is within the base directory
+	if !strings.HasPrefix(cleanPath, filepath.Clean(baseDir)+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid path: %s", unsafePath)
+	}
+	return cleanPath, nil
+}
+
 // URLToFilePath maps a URL to a local file path for saving HTML/content.
 // If the URL ends in '/', it becomes index.html
-func URLToFilePath(baseDir string, rawURL string) string {
+func URLToFilePath(baseDir string, rawURL string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		// fallback to hashed filename
 		hash := sha1.Sum([]byte(rawURL))
-		return filepath.Join(baseDir, hex.EncodeToString(hash[:])+".html")
+		return filepath.Join(baseDir, hex.EncodeToString(hash[:])+".html"), nil
 	}
 
 	hostPath := SanitizeFilename(parsed.Host)
@@ -73,5 +112,20 @@ func URLToFilePath(baseDir string, rawURL string) string {
 		path += "_" + hex.EncodeToString(hash[:])
 	}
 
-	return filepath.Join(baseDir, hostPath, SanitizeFilename(path))
+	return SafeJoin(baseDir, "/"+hostPath, path)
+}
+
+// StripHTMLFile removes the HTML file from the path, if present.
+func StripHTMLFile(p string) string {
+	ext := path.Ext(p)
+	if ext != "" {
+		p = path.Dir(p)
+	}
+	if p == "." {
+		p = ""
+	}
+	if !strings.HasSuffix(p, "/") {
+		return p + "/"
+	}
+	return p
 }
