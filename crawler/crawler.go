@@ -55,7 +55,7 @@ func (c *Crawler) Crawl() {
 	robots_url := startURL + "robots.txt"
 	_, _, _, _, robots_err := c.fetchAndSave(robots_url)
 	if robots_err != nil {
-		c.log.Debug("Error Downloading Robots.txt", robots_url, robots_err)
+		c.log.Error("Error Downloading Robots.txt", robots_url, robots_err)
 	}
 
 	c.wg.Add(1) // adding a wait here to track the first URL and wait until all the subsequent processes happen
@@ -80,11 +80,7 @@ func (c *Crawler) Crawl() {
 func (c *Crawler) worker(urlCh chan string) {
 	c.log.Debug("Starting Worker")
 	for urlToCheck := range urlCh {
-
-		if c.cfg.Verbose {
-			c.log.Debug("Starting to process a URL", urlToCheck)
-		}
-
+		c.log.Debug("Starting to process a URL", urlToCheck)
 		go func(url string) {
 			defer c.wg.Done()
 			c.processURL(url, urlCh)
@@ -104,9 +100,7 @@ func (c *Crawler) processURL(u string, urlCh chan<- string) {
 	}
 
 	// 1. Fetch
-	if c.cfg.Verbose {
-		c.log.Info("Sending to fetch and save", u)
-	}
+	c.log.Debug("Sending to fetch and save", u)
 	// 1.1 Rate limiting
 	time.Sleep(time.Duration(c.cfg.RateMs) * time.Millisecond)
 	// 1.2 Gather the info from the URL
@@ -117,24 +111,18 @@ func (c *Crawler) processURL(u string, urlCh chan<- string) {
 	}
 
 	// 2. Save page record
-	if c.cfg.Verbose {
-		c.log.Info("Saving the fetched URL")
-	}
+	c.log.Debug("Saving the fetched URL")
 	if err := c.store.SavePage(u, status, contentType, filePath); err != nil {
 		c.log.Error("DB save error for", u, ":", err)
 	}
-	if c.cfg.Verbose {
-		c.log.Info("Processing for links")
-	}
 
 	// 3. Add this URL to the list so I don't check it again
+	c.log.Debug("Add Url to Visited List", u)
 	c.mu.Lock()
 	c.visited[u] = true
 	c.mu.Unlock()
-	if c.cfg.Verbose {
-		c.log.Debug("Add Url to Visited List", u)
-	}
 
+	c.log.Debug("Extracting links from the fetched page")
 	// 4. Save links and enqueue new ones
 	for _, link := range links {
 		c.store.SaveLink(u, link)
@@ -201,6 +189,7 @@ func (c *Crawler) fetchAndSave(rawURL string) (status int, contentType string, f
 // Validate the string as a possible URL, see if it is safe, in scope
 // and formatted as a URL correctly.
 func (c *Crawler) shouldVisit(raw string) bool {
+	c.log.Debug("start shouldVisit")
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return false
@@ -221,13 +210,13 @@ func (c *Crawler) shouldVisit(raw string) bool {
 		}
 	}
 	if !c.isRobotsTxtAllowed(parsed.Path) {
+		c.log.Debug("robots.txt blocks link path", parsed.Path)
 		return false
 	}
 
 	if c.isAlreadyVisited(parsed.String()) {
 		return false
 	}
-
 	return true
 }
 
@@ -236,15 +225,11 @@ func (c *Crawler) shouldVisit(raw string) bool {
 // and processing related links on ones we do pull.
 func (c *Crawler) isAlreadyVisited(u string) bool {
 	// Check if visited already
-	if c.cfg.Verbose {
-		c.log.Debug("Start isAlreadyVisited")
-	}
+	c.log.Debug("Start isAlreadyVisited")
 	c.mu.Lock()
 	if c.visited[u] {
 		c.mu.Unlock()
-		if c.cfg.Verbose {
-			c.log.Info("Yup, already visited this URL.", u)
-		}
+		c.log.Debug("Already visited this URL.", u)
 		return true
 	}
 	c.mu.Unlock()
@@ -288,14 +273,14 @@ func extractLinks(baseURL string, r io.Reader) ([]string, error) {
 }
 
 // Download a copy of the
-func readRobotsTxt(full_robots_url string) (*robotstxt.RobotsData, error) {
-	resp, err := http.Get(full_robots_url)
+func readRobotsTxt(full_robots_path string) (*robotstxt.RobotsData, error) {
+	robotsFile, err := os.ReadFile(full_robots_path)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	robots, err := robotstxt.FromResponse(resp)
+	robotsData := string(robotsFile)
+	robots, err := robotstxt.FromString(robotsData)
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +291,9 @@ func readRobotsTxt(full_robots_url string) (*robotstxt.RobotsData, error) {
 // Validate that the crawler is allowed to access the content as specified by the
 // copy of the robots.txt that was downloaded at the beginning of the session
 func (c *Crawler) isRobotsTxtAllowed(path string) bool {
+	c.log.Debug("Starting isRobotsTxtAllowed")
 	userAgent := c.cfg.UserAgent
-	robotsFilePath := util.URLToFilePath(c.cfg.OutputDir, "robots.txt")
+	robotsFilePath := util.URLToFilePath(c.cfg.OutputDir, c.cfg.StartURL+"/robots.txt")
 	robots, err := readRobotsTxt(robotsFilePath)
 	if err != nil {
 		c.log.Error("Error reading robots.txt:", err)
@@ -315,5 +301,9 @@ func (c *Crawler) isRobotsTxtAllowed(path string) bool {
 	}
 
 	group := robots.FindGroup(userAgent)
-	return group.Test(path)
+	testResult := group.Test(path)
+
+	c.log.Debug("Ending isRobotsTxtAllowed")
+	return testResult
+
 }

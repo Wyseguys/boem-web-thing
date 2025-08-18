@@ -18,7 +18,6 @@ type Config struct {
 	RespectRobots bool     `json:"respect_robots"`
 	UserAgent     string   `json:"user_agent"`
 	AllowedHosts  []string `json:"allowed_hosts"`
-	Verbose       bool     `json:"verbose"`
 	RateMs        int      `json:"rate_ms"`
 	HTTPTimeout   int      `json:"http_timeout_seconds"`
 }

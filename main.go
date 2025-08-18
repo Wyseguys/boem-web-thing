@@ -29,10 +29,8 @@ func main() {
 	}
 	defer appLogger.Close()
 
-	if cfg.Verbose {
-		appLogger.Info("Configuration initialized")
-		appLogger.Info("Logger initialized")
-	}
+	appLogger.Debug("Configuration initialized")
+	appLogger.Debug("Logger initialized")
 
 	// 3. Open SQLite storage
 	dbPath := cfg.DBFilePath
@@ -46,15 +44,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
-	if cfg.Verbose {
-		appLogger.Info("Database opened")
-	}
+	appLogger.Debug("Database opened")
 
 	// 4. Create crawler
 	c := crawler.New(cfg, appLogger, store)
-	if cfg.Verbose {
-		appLogger.Info("Crawler initialized")
-	}
+	appLogger.Debug("Crawler successfully initialized")
 
 	// 5. Start crawling
 	appLogger.Info("Beginning crawl")
@@ -62,4 +56,9 @@ func main() {
 
 	// 6. Tell me the crawl is done
 	appLogger.Info("Finished crawl")
+
+	// 7. Tidy up
+	store.Close()
+	appLogger.Close()
+
 }
