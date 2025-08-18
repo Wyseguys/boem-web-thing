@@ -15,7 +15,9 @@ func EnsureDir(dir string) error {
 	return os.MkdirAll(dir, os.ModePerm)
 }
 
-func EnsureFile(path string) error {
+// EnsureFile will make the file and the path if they don't already exist
+// https://stackoverflow.com/a/74322748 for some hints on using syscall to make the permission
+func EnsureFile(path string, perm os.FileMode) error {
 	if _, err := os.Stat(path); err == nil {
 		// file already exists
 		return nil
@@ -25,7 +27,7 @@ func EnsureFile(path string) error {
 	}
 
 	// create parent dir
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), perm); err != nil {
 		return err
 	}
 

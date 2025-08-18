@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/wyseguys/boem-web-thing/util"
@@ -18,7 +19,8 @@ type Storage struct {
 // New opens (or creates) the SQLite database at the given path.
 func New(dbPath string) (*Storage, error) {
 
-	if err := util.EnsureFile(dbPath); err != nil {
+	filemode := int(755) //if we are creating te database file, better make it writable
+	if err := util.EnsureFile(dbPath, os.FileMode(filemode)); err != nil {
 		return nil, fmt.Errorf("failed to ensure db file: %w", err)
 	}
 
