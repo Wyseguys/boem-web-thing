@@ -1,0 +1,23 @@
+{
+  "name": "boem-web-thing",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wyseguys/boem-web-thing.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Wyseguys/boem-web-thing/issues"
+  },
+  "homepage": "https://github.com/Wyseguys/boem-web-thing#readme",
+  "dependencies": {
+    "pa11y": "^9.0.0"
+  }
+}

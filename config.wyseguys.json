@@ -1,7 +1,7 @@
 {
-  "start_url": "https://doiboem.lndo.site/crawltest/",
+  "start_url": "https://www.wyseguys.com/",
   "start_url_help": "The first URL that will be crawled. Trailing slash /  if a directory please",
-  "allowed_hosts": ["doiboem.lndo.site"],
+  "allowed_hosts": ["www.wyseguys.com"],
   "allowed_hosts_help": "Domains and subdomains that will be downloaded, other domains links will be noted in the database, but not downloaded.",
   "output_dir": "./_output",
   "output_dir_help": "Relative directory to store the copied HTML files",
