@@ -1,7 +1,10 @@
 package config
 
 import (
+	"boem-web-thing/logger"
+	"boem-web-thing/storage"
 	"encoding/json"
+	"log"
 	"os"
 	"time"
 )
@@ -62,4 +65,40 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func (c *Config) InitializeApp() (*logger.Logger, *storage.Storage, error) {
+
+	// 2. Init logger
+	logDir := c.LogPath
+	if logDir == "" {
+		log.Fatal("Error with logging configuration:")
+		return nil, nil, nil
+	}
+	appLogger, err := logger.New(logDir, c.LogLevel)
+	if err != nil {
+		log.Fatal("Error initializing logger:", err)
+		return nil, nil, err
+	}
+	defer appLogger.Close()
+
+	appLogger.Debug("Configuration initialized")
+	appLogger.Debug("Logger initialized")
+
+	// 3. Open SQLite storage
+	dbPath := c.DBFilePath
+	if dbPath == "" {
+		log.Fatal("Error with database configuration:", err)
+		return nil, nil, err
+	}
+
+	store, err := storage.New(dbPath)
+	if err != nil {
+		appLogger.Error("Error opening database:", err)
+		os.Exit(1)
+		return nil, nil, err
+	}
+	appLogger.Debug("Database opened")
+
+	return appLogger, store, nil
 }

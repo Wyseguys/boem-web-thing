@@ -12,7 +12,7 @@ var rootCmd = &cobra.Command{
 	Short: "Webcrawler is a tool to crawl and save websites",
 	Long:  `A simple CLI tool to crawl websites and save HTML files to disk.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Available commands: crawl, pa11y")
+		fmt.Println("Available commands: crawl, pa11y, sitescan")
 	},
 }
 
