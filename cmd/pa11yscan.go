@@ -8,7 +8,7 @@ import (
 )
 
 var pa11yCmd = &cobra.Command{
-	Use:   "pa11y [path/to/html]",
+	Use:   "pa11y [path/to/html] [override pa11y config file]",
 	Short: "Run a pa11y scan (pa11y must be installed with NPM)",
 	Args:  cobra.MaximumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -16,16 +16,16 @@ var pa11yCmd = &cobra.Command{
 		// url := args[0]
 		// fmt.Printf("Crawling %s...\n", url)
 
-		htmlpath := "" // default
-		pa11yCmd := "" // no default commands
+		htmlpath := ""        // default
+		pa11yConfigFile := "" // no default commands
 
 		if len(args) >= 1 {
 			htmlpath = args[0]
 		}
 		if len(args) == 2 {
-			pa11yCmd = args[1]
+			pa11yConfigFile = args[1]
 		}
-		result, err := RunPa11y(htmlpath, pa11yCmd)
+		result, err := RunPa11y(htmlpath, pa11yConfigFile)
 		if err != nil {
 			fmt.Printf("ERROR %s...\n", err.Error())
 			//} else {
@@ -39,9 +39,9 @@ func init() {
 }
 
 // RunPa11y runs pa11y CLI on a given HTML file and returns the output
-func RunPa11y(filePath string, pa11yCmd string) (string, error) {
+func RunPa11y(filePath string, pa11yConfigFile string) (string, error) {
 
-	results, err := scanner.ScanWithPa11y(filePath, pa11yCmd)
+	results, err := scanner.ScanWithPa11y(filePath, pa11yConfigFile)
 	return results, err
 
 }

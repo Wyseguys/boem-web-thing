@@ -40,6 +40,8 @@ func (s *Scanner) ScanSite() {
 		//Pull the URLs from storge, add "./" so we are looking relatively
 		filePath := "./" + pg.File_path //e.g. "./_output/doiboem.lndo.site/crawltest/index.html"
 
+		pa11yConfigFile := "-c pa11y-config.json"
+
 		//if the file exists on the disk, scan it
 		_, err := os.Stat(filePath)
 		if err != nil {
@@ -47,7 +49,7 @@ func (s *Scanner) ScanSite() {
 		}
 
 		//Store the result of the scan next to the page
-		scanResult, err := ScanWithPa11y(filePath, "")
+		scanResult, err := ScanWithPa11y(filePath, pa11yConfigFile)
 		if err != nil {
 			s.log.Error()
 		}
@@ -57,7 +59,7 @@ func (s *Scanner) ScanSite() {
 }
 
 // Run the filepath through the pa11y scanner and output the result as a JSON string
-func ScanWithPa11y(filePath string, pa11yCmds string) (string, error) {
+func ScanWithPa11y(filePath string, pa11yConfigFile string) (string, error) {
 
 	// Step 1: Check if npx is available
 	npxPath, err := exec.LookPath("npx")
@@ -84,10 +86,14 @@ func ScanWithPa11y(filePath string, pa11yCmds string) (string, error) {
 
 	}
 
+	if pa11yConfigFile == "" {
+		pa11yConfigFile = "-c pa11y-config.json"
+	}
+
 	// Step 2: Build the command
 	fmt.Println("Running pa11y on:", filePath)
 	// Use bash -c to allow shell features like sourcing nvm if needed
-	command := fmt.Sprintf("npx pa11y %s %s --reporter json", filePath, pa11yCmds)
+	command := fmt.Sprintf("npx pa11y %s %s", filePath, pa11yConfigFile)
 
 	// Optional: Source nvm if needed (you can make this conditional or configurable)
 	shellCommand := fmt.Sprintf("source ~/.nvm/nvm.sh && %s", command)
